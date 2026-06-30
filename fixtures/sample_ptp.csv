@@ -1,0 +1,12 @@
+CPT only copyright 2025 American Medical Association.  All rights reserved.						
+Column1/Column2 Edits						
+Column 1	Column 2	*=in existence	Effective	Deletion	Modifier	PTP Edit Rationale
+		prior to 1996	Date	Date	0=not allowed	
+				*=no data	1=allowed	
+					9=not applicable	
+11042	97597	*	19960101	*	1	Standards of medical / surgical practice
+93000	93005		20000101	*	0	Misuse of column two code with column one code
+27447	27486		20040401	*	1	More extensive procedure
+80053	80048	*	19960101	*	0	Standards of medical / surgical practice
+36415	36416		20020101	20231231	9	Mutually exclusive procedures
+99213	99214		20100101	*	0	Misuse of column two code with column one code

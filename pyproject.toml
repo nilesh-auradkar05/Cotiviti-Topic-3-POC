@@ -1,0 +1,37 @@
+[project]
+name = "policyforge"
+version = "0.1.0"
+description = "Convert written CMS payment policy into auditable, executable claim edits."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6,<3",
+    "pandas>=2.2,<3",
+    "pdfplumber>=0.11,<0.12",
+    "anthropic>=0.40,<1",
+    "scikit-learn>=1.4,<2",
+    "streamlit>=1.33,<2",
+    "langgraph>=0.2,<0.3",
+    "chromadb>=0.5,<0.6",
+    "json-logic-qubit>=0.9,<1",  # JSON Logic evaluator; swap if you prefer another
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+    "ruff>=0.4,<1",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["policyforge*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# My Files
+.agents
+.claude
+.codegraph
+.codex
+data
+.python-version
+AGENTS.md
+CLAUDE.md
+DECISIONS.md
+Intern_Assessment_Directions.pdf
+PLAN.md
+SPEC.md
+TESTING.md
