@@ -96,13 +96,17 @@ def score_track_b(
     for claim, expected in cases:
         disposition = adjudicate(claim, rules, ruleset_version)
         predicted = {line.line_id: line.status for line in disposition.line_dispositions}
-        claim_correct = set(predicted) == set(expected)
+        claim_correct = True
 
-        for line_id, expected_status in expected.items():
-            predicted_status = predicted[line_id]
+        for line_id in sorted(set(predicted) | set(expected)):
+            expected_status = expected.get(line_id)
+            predicted_status = predicted.get(line_id)
             if predicted_status is not expected_status:
                 claim_correct = False
-            key = f"expected={expected_status.value},predicted={predicted_status.value}"
+            key = (
+                f"expected={_status_label(expected_status)},"
+                f"predicted={_status_label(predicted_status)}"
+            )
             confusion[key] = confusion.get(key, 0) + 1
 
         if claim_correct:
@@ -156,6 +160,11 @@ def run_eval() -> EvalReport:
 def main() -> None:
     report, excluded_count = _run_eval_with_excluded_count()
     print(
+        "Track A is scoped to the 100-row gold set; source PTP rows are the scored "
+        "extractable examples, and low recall is expected because gold pairs rarely "
+        "appear verbatim in policy-manual prose."
+    )
+    print(
         "Track B excluded "
         f"{excluded_count} UNCERTAIN_REVIEW_REQUIRED cases from deterministic accuracy."
     )
@@ -186,6 +195,12 @@ def _ratio(numerator: float, denominator: float) -> float:
     if denominator == 0:
         return 0.0
     return numerator / denominator
+
+
+def _status_label(status: DispositionStatus | None) -> str:
+    if status is None:
+        return "missing"
+    return status.value
 
 
 def _dedupe_candidates(candidates: list[RuleCandidate]) -> list[RuleCandidate]:
@@ -294,6 +309,7 @@ def _rules_from_gold_rows(rows: Iterable[Mapping[str, str]]) -> list[PTPRule]:
             rationale=row["ptp_edit_rationale"],
         )
         for row in rows
+        if row["is_source_ptp_pair"] == "1"
     ]
 
 
@@ -327,10 +343,16 @@ def _load_xlsx_rows(path: Path) -> list[dict[str, str]]:
         cells = {}
         for cell in row.findall("x:c", _XLSX_NS):
             cells[_column_number(cell.attrib["r"])] = _cell_value(cell, shared_strings)
-        row_values.append([cells.get(index, "") for index in range(1, max(cells) + 1)])
+        if not cells:
+            continue
+        width = max(max(cells), len(row_values[0]) if row_values else 0)
+        row_values.append([cells.get(index, "") for index in range(1, width + 1)])
 
     headers = row_values[0]
-    return [dict(zip(headers, values)) for values in row_values[1:]]
+    return [
+        dict(zip(headers, (values + [""] * len(headers))[: len(headers)]))
+        for values in row_values[1:]
+    ]
 
 
 def _shared_strings(archive: zipfile.ZipFile) -> list[str]:

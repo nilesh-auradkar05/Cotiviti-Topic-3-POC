@@ -43,7 +43,8 @@ def extract_rules(
                     "Extract only explicit NCCI PTP code-pair candidates from this policy text. "
                     "Return a candidate only when the prose names the Column 1 code, Column 2 "
                     "code, and modifier indicator. Use a verbatim source_quote from the text. "
-                    "Do not complete pairs from prior knowledge.\n\n"
+                    "Do not complete pairs from prior knowledge. If the text names no complete "
+                    "candidate, return an empty candidates list.\n\n"
                     f"Policy text:\n{text}"
                 ),
             }
@@ -67,7 +68,10 @@ def _candidate_payloads(response: Any) -> list[Mapping[str, Any]]:
     for block in _get(response, "content", []):
         if _get(block, "type") != "tool_use" or _get(block, "name") != _TOOL_NAME:
             continue
-        tool_input = _CandidateToolInput(**_get(block, "input", {}))
+        raw_input = _get(block, "input", {})
+        if raw_input == {}:
+            continue
+        tool_input = _CandidateToolInput(**raw_input)
         candidates.extend(tool_input.candidates)
     return candidates
 

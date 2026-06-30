@@ -8,6 +8,7 @@ from datetime import date
 from policyforge.evaluation import evaluate, score_track_a, score_track_b
 from policyforge.evaluation.run_eval import (
     _claim_cases_from_gold_rows,
+    _rules_from_gold_rows,
     _status_for_expected_decision,
 )
 from policyforge.retriever import PolicyChunk
@@ -112,8 +113,10 @@ def _gold_row(
     date_of_service_col1: str = "2026-07-15",
     date_of_service_col2: str = "2026-07-15",
     line2_modifiers: str = "",
+    is_source_ptp_pair: str = "1",
 ) -> dict[str, str]:
     return {
+        "is_source_ptp_pair": is_source_ptp_pair,
         "source_column_1": column_1,
         "source_column_2": column_2,
         "source_effective_date": "2020-01-01",
@@ -153,6 +156,22 @@ def test_track_a_perfect_extraction_scores_every_gold_pair():
     assert result.false_positives == 0
     assert result.false_negatives == 0
     assert result.n_examples == 2
+
+
+def test_track_a_matches_one_gold_rule_to_only_one_identical_candidate():
+    gold = [_rule("11042", "97597", ModifierIndicator.ALLOWED)]
+    candidates = [
+        _candidate("11042", "97597", ModifierIndicator.ALLOWED),
+        _candidate("11042", "97597", ModifierIndicator.ALLOWED),
+    ]
+
+    result = score_track_a(candidates, gold, "direct")
+
+    assert result.true_positives == 1
+    assert result.false_positives == 1
+    assert result.false_negatives == 0
+    assert result.recall == 1.0
+    assert result.precision == 0.5
 
 
 def test_a_corrupted_extraction_lowers_the_track_a_score():
@@ -291,6 +310,32 @@ def test_track_b_fixture_adjudicates_all_claims_exactly():
     }
 
 
+def test_gold_rows_round_trip_to_track_b_deny_and_modifier_review_cases():
+    rows = [
+        _gold_row(expected_decision="DENY_COLUMN_TWO"),
+        _gold_row(
+            expected_decision="ALLOW_WITH_MODIFIER_REVIEW",
+            column_1="11042",
+            column_2="97597",
+            modifier_indicator="1",
+            line2_modifiers="59",
+        ),
+    ]
+    cases, excluded = _claim_cases_from_gold_rows(rows)
+    rules = [
+        _rule("93000", "93005", ModifierIndicator.NOT_ALLOWED),
+        _rule("11042", "97597", ModifierIndicator.ALLOWED),
+    ]
+
+    result = score_track_b(cases, rules, RULESET_VERSION)
+
+    assert excluded == 0
+    assert cases[1][0].lines[1].modifiers == ["59"]
+    assert result.accuracy == 1.0
+    assert result.confusion["expected=deny,predicted=deny"] == 1
+    assert result.confusion["expected=flag,predicted=flag"] == 1
+
+
 def test_track_b_wrong_expected_status_is_caught_by_confusion():
     cases = [
         _case(
@@ -308,6 +353,29 @@ def test_track_b_wrong_expected_status_is_caught_by_confusion():
     assert result.accuracy == 0.0
     assert result.n_correct == 0
     assert result.confusion["expected=pay,predicted=deny"] == 1
+
+
+def test_track_b_mismatched_line_sets_score_incorrect_without_crashing():
+    cases = [
+        _case(
+            _claim(_line("L1", "93000"), _line("L2", "93005")),
+            {"L1": DispositionStatus.PAY, "L99": DispositionStatus.PAY},
+        ),
+        _case(
+            _claim(_line("L1", "93000"), _line("L2", "93005")),
+            {"L1": DispositionStatus.PAY},
+        ),
+    ]
+
+    result = score_track_b(
+        cases,
+        [_rule("93000", "93005", ModifierIndicator.NOT_ALLOWED)],
+        RULESET_VERSION,
+    )
+
+    assert result.accuracy == 0.0
+    assert result.confusion["expected=pay,predicted=missing"] == 1
+    assert result.confusion["expected=missing,predicted=deny"] == 2
 
 
 def test_track_b_scoring_path_does_not_import_a_model(monkeypatch):
@@ -353,6 +421,29 @@ def test_uncertain_gold_rows_are_excluded_from_track_b_accuracy():
 
     assert cases == []
     assert excluded == 1
+
+
+def test_non_ptp_source_rows_do_not_become_track_a_gold_rules():
+    rows = [
+        _gold_row(expected_decision="DENY_COLUMN_TWO"),
+        _gold_row(
+            expected_decision="ALLOW_NO_ACTIVE_PTP_EDIT",
+            column_1="80053",
+            column_2="36415",
+            is_source_ptp_pair="0",
+        ),
+    ]
+
+    rules = _rules_from_gold_rows(rows)
+    result = score_track_a(
+        [_candidate("93000", "93005", ModifierIndicator.NOT_ALLOWED)],
+        rules,
+        "direct",
+    )
+
+    assert [rule.rule_id for rule in rules] == ["PTP:93000:93005"]
+    assert result.n_examples == 1
+    assert result.f1 == 1.0
 
 
 def test_different_beneficiary_gold_row_becomes_separate_single_line_claims():

@@ -93,8 +93,8 @@ def test_adjudication_is_deterministic_and_preserves_claim_line_order():
 
 def test_same_severity_edits_cite_the_smaller_rule_id_independent_of_rule_order():
     claim = _claim(
-        _line("L1", "11042"),
-        _line("L2", "36415"),
+        _line("L1", "36415"),
+        _line("L2", "11042"),
         _line("L3", "97597"),
     )
     higher_rule = _rule("36415", "97597", ModifierIndicator.NOT_ALLOWED)
@@ -105,6 +105,8 @@ def test_same_severity_edits_cite_the_smaller_rule_id_independent_of_rule_order(
 
     assert _by_line(first)["L3"].status is DispositionStatus.DENY
     assert _by_line(first)["L3"].cited_rule_id == "PTP:11042:97597"
+    assert _by_line(second)["L3"].status is DispositionStatus.DENY
+    assert _by_line(second)["L3"].cited_rule_id == "PTP:11042:97597"
     assert _decision_tuples(first) == _decision_tuples(second)
 
 
@@ -178,6 +180,31 @@ def test_an_edit_outside_its_date_window_does_not_fire():
     )
 
     assert {line.status for line in disposition.line_dispositions} == {DispositionStatus.PAY}
+
+
+def test_duplicate_pair_resolves_to_the_row_active_on_dos_regardless_of_order():
+    claim = _claim(_line("L1", "93000"), _line("L2", "93005"))
+    active = _rule(
+        "93000",
+        "93005",
+        ModifierIndicator.NOT_ALLOWED,
+        effective_date=date(2020, 1, 1),
+    )
+    expired = _rule(
+        "93000",
+        "93005",
+        ModifierIndicator.NOT_ALLOWED,
+        effective_date=date(2010, 1, 1),
+        deletion_date=date(2015, 12, 31),
+    )
+
+    first = adjudicate(claim, [active, expired], RULESET_VERSION)
+    second = adjudicate(claim, [expired, active], RULESET_VERSION)
+
+    assert _by_line(first)["L2"].status is DispositionStatus.DENY
+    assert _by_line(first)["L2"].cited_rule_id == "PTP:93000:93005"
+    assert _by_line(second)["L2"].status is DispositionStatus.DENY
+    assert _by_line(second)["L2"].cited_rule_id == "PTP:93000:93005"
 
 
 def test_a_pair_the_ruleset_never_mentions_pays():

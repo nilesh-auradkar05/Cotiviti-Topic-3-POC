@@ -71,6 +71,7 @@ def test_a_pair_named_in_prose_is_extracted_with_its_ccmi_and_provenance():
     prompt = client.calls[0]["messages"][0]["content"]
     assert "Extract only explicit NCCI PTP code-pair candidates" in prompt
     assert "Do not complete pairs from prior knowledge" in prompt
+    assert "If the text names no complete candidate, return an empty candidates list" in prompt
     tool_schema = client.calls[0]["tools"][0]["input_schema"]["properties"]["candidates"]["items"]
     assert "source_chapter" not in tool_schema["properties"]
 
@@ -154,6 +155,27 @@ def test_an_ungrounded_quote_is_retained_and_measurable():
 
 def test_empty_tool_output_yields_no_candidates():
     client = FakeClient([])
+
+    candidates = extract_rules(
+        "Providers must code correctly even when no edit exists.",
+        "Chapter 1",
+        client=client,
+        model="test-model",
+    )
+
+    assert candidates == []
+
+
+def test_empty_forced_tool_input_yields_no_candidates():
+    client = FakeClient(
+        blocks=[
+            {
+                "type": "tool_use",
+                "name": "record_rule_candidates",
+                "input": {},
+            }
+        ]
+    )
 
     candidates = extract_rules(
         "Providers must code correctly even when no edit exists.",

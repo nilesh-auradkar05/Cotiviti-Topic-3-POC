@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 from policyforge.schemas import (
     Claim,
     ClaimDisposition,
@@ -33,7 +35,10 @@ def adjudicate(
     rules: list[PTPRule],
     ruleset_version: str,
 ) -> ClaimDisposition:
-    rules_by_pair = {(rule.column_1, rule.column_2): rule for rule in rules}
+    rules_by_pair = defaultdict(list)
+    for rule in rules:
+        rules_by_pair[(rule.column_1, rule.column_2)].append(rule)
+
     dispositions = {
         line.line_id: LineDisposition(
             line_id=line.line_id,
@@ -50,9 +55,14 @@ def adjudicate(
                 continue
             if column_1_line.date_of_service != column_2_line.date_of_service:
                 continue
-            rule = rules_by_pair.get((column_1_line.code, column_2_line.code))
-            if rule is None or not rule.is_active_on(column_1_line.date_of_service):
+            active_rules = [
+                rule
+                for rule in rules_by_pair.get((column_1_line.code, column_2_line.code), [])
+                if rule.is_active_on(column_1_line.date_of_service)
+            ]
+            if not active_rules:
                 continue
+            rule = min(active_rules, key=lambda active_rule: active_rule.rule_id)
             if rule.modifier_indicator is ModifierIndicator.NOT_APPLICABLE:
                 continue
 

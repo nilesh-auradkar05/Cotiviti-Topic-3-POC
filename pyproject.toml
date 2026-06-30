@@ -11,6 +11,7 @@ dependencies = [
     "scikit-learn>=1.4,<2",
     "streamlit>=1.33,<2",
     "langgraph>=0.2,<0.3",
+    "langgraph-checkpoint>=2,<3",
     "chromadb>=0.5,<0.6",
     "json-logic-qubit>=0.9,<1",  # JSON Logic evaluator; swap if you prefer another
 ]
