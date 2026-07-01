@@ -45,6 +45,27 @@ _DECISION_TO_STATUS = {
 }
 
 
+def extractable_gold(gold: list[PTPRule], corpus_text: str) -> list[PTPRule]:
+    """Gold pairs whose BOTH codes actually appear in the policy prose.
+
+    Track A recall over the full gold set understates extraction quality: the PTP
+    table holds hundreds of thousands of pairs, but the manual states only a small
+    subset as explicit code pairs. A pair whose codes never appear in prose cannot
+    be extracted from prose, so scoring against it measures the corpus, not the
+    model. This is the honest denominator to report recall over.
+    """
+    normalized = _normalize_whitespace(corpus_text)
+    return [
+        rule
+        for rule in gold
+        if rule.column_1 in normalized and rule.column_2 in normalized
+    ]
+
+
+def _normalize_whitespace(value: str) -> str:
+    return re.sub(r"\s+", " ", value)
+
+
 def score_track_a(
     candidates: list[RuleCandidate],
     gold: list[PTPRule],
@@ -159,11 +180,28 @@ def run_eval() -> EvalReport:
 
 def main() -> None:
     report, excluded_count = _run_eval_with_excluded_count()
+    corpus_text = "\n".join(load_policy_sections(_POLICY_MANUAL_PATH).values())
+    gold_rows = _load_xlsx_rows(_GOLD_SET_PATH)
+    gold_examples = _rules_from_gold_rows(gold_rows)
+    extractable = extractable_gold(gold_examples, corpus_text)
     print(
         "Track A is scoped to the 100-row gold set; source PTP rows are the scored "
-        "extractable examples, and low recall is expected because gold pairs rarely "
-        "appear verbatim in policy-manual prose."
+        "extractable examples, and low recall over the full set is expected because "
+        "most gold pairs never appear verbatim in policy-manual prose."
     )
+    print(
+        f"Extractable denominator: {len(extractable)} of {len(gold_examples)} gold "
+        "pairs are stated as explicit code pairs in the prose. Recall over this "
+        "subset is the honest extraction-fidelity number to report:"
+    )
+    for track in report.track_a:
+        recall_extractable = _ratio(track.true_positives, len(extractable))
+        print(
+            f"  {track.retriever_name}: recall_over_extractable="
+            f"{recall_extractable:.3f} "
+            f"(tp={track.true_positives}, extractable={len(extractable)}); "
+            f"recall_over_full_gold={track.recall:.3f}"
+        )
     print(
         "Track B excluded "
         f"{excluded_count} UNCERTAIN_REVIEW_REQUIRED cases from deterministic accuracy."

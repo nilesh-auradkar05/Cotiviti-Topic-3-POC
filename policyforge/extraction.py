@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import os
+import re
 from typing import Any
 
 from pydantic import BaseModel
@@ -60,7 +61,18 @@ def extract_rules(
 
 
 def is_quote_grounded(candidate: RuleCandidate, text: str) -> bool:
-    return candidate.source_quote in text
+    """True if the candidate's source_quote appears in the policy text.
+
+    PDF-extracted prose carries hard line breaks and irregular spacing, so a quote
+    the model copied verbatim ("Column One") will not substring-match the raw text
+    ("Column\\nOne"). We compare on whitespace-normalized forms so a genuinely
+    grounded quote reads as grounded instead of failing on layout artifacts.
+    """
+    return _normalize_whitespace(candidate.source_quote) in _normalize_whitespace(text)
+
+
+def _normalize_whitespace(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def _candidate_payloads(response: Any) -> list[Mapping[str, Any]]:

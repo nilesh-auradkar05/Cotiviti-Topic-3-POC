@@ -153,6 +153,17 @@ def test_an_ungrounded_quote_is_retained_and_measurable():
     assert is_quote_grounded(candidates[0], TEXT) is False
 
 
+def test_grounding_tolerates_pdf_whitespace_and_line_breaks():
+    # A quote the model copied verbatim, but the source PDF text carries hard line
+    # breaks and doubled spaces from layout extraction. Grounding must still hold.
+    client = FakeClient([_candidate(source_quote="CPT code 11042 is the Column 1 code")])
+    pdf_like_text = "CPT code 11042 is the\nColumn 1  code and CPT code 97597 is the Column 2 code."
+
+    candidates = extract_rules(pdf_like_text, "Chapter 1", client=client, model="test-model")
+
+    assert is_quote_grounded(candidates[0], pdf_like_text) is True
+
+
 def test_empty_tool_output_yields_no_candidates():
     client = FakeClient([])
 

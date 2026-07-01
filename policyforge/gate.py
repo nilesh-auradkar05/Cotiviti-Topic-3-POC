@@ -6,7 +6,7 @@ from datetime import date, datetime
 from enum import Enum
 import warnings
 
-from policyforge.schemas import PTPRule, RuleCandidate
+from policyforge.schemas import ModifierIndicator, PTPRule, RuleCandidate
 
 
 class GateDecision(str, Enum):
@@ -21,13 +21,24 @@ def review_candidate(
     effective_date: date,
     deletion_date: date | None = None,
     in_existence_prior_1996: bool = False,
+    modifier_indicator: ModifierIndicator | None = None,
 ) -> PTPRule | None:
+    """Promote a candidate to an authoritative rule, or drop it on reject.
+
+    The reviewer may override the extracted modifier_indicator (CCMI). Extraction
+    can disagree with its own rationale — e.g. propose CCMI 9 (not applicable) for
+    text that plainly forbids modifier bypass (CCMI 0). CCMI 9 compiles to an inert
+    rule the engine skips, so without a correction path the gate would rubber-stamp
+    a rule that denies nothing. The override is the gate doing its job.
+    """
     if decision is GateDecision.REJECT:
         return None
     return PTPRule(
         column_1=candidate.column_1,
         column_2=candidate.column_2,
-        modifier_indicator=candidate.modifier_indicator,
+        modifier_indicator=(
+            modifier_indicator if modifier_indicator is not None else candidate.modifier_indicator
+        ),
         effective_date=effective_date,
         deletion_date=deletion_date,
         rationale=candidate.rationale,
@@ -54,6 +65,7 @@ def gate_node(state, config=None) -> dict:
         effective_date=_date_value(resume["effective_date"]),
         deletion_date=_optional_date(resume.get("deletion_date")),
         in_existence_prior_1996=resume.get("in_existence_prior_1996", False),
+        modifier_indicator=_optional_indicator(resume.get("modifier_indicator")),
     )
     store = state.get("store")
     if store is None:
@@ -101,6 +113,12 @@ def _optional_date(value) -> date | None:
     if value is None:
         return None
     return _date_value(value)
+
+
+def _optional_indicator(value) -> ModifierIndicator | None:
+    if value is None:
+        return None
+    return ModifierIndicator(int(value))
 
 
 def _date_value(value) -> date:

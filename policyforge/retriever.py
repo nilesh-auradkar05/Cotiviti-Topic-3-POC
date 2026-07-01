@@ -19,6 +19,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 import json
+import logging
 import os
 import re
 from typing import Optional
@@ -164,6 +165,7 @@ def build_chroma_index(
     chunk_size: int = 1200,
 ) -> ChromaRetriever:
     embed = embedding_fn or _ollama_embedding_fn()
+    _silence_chroma_telemetry()
     client = chromadb.EphemeralClient(settings=Settings(anonymized_telemetry=False))
     with _chroma_pydantic_compat():
         collection = client.get_or_create_collection(collection_name)
@@ -245,6 +247,19 @@ def _ollama_embedding_fn(model: str | None = None) -> EmbeddingFn:
         return [float(value) for value in payload["embeddings"][0]]
 
     return embed
+
+
+def _silence_chroma_telemetry() -> None:
+    """Quiet chromadb's broken product-telemetry path.
+
+    chromadb 0.5.x calls ``posthog.capture()`` with three positional args, but
+    ``posthog>=7`` accepts one, so every telemetry send fails and logs a (non-fatal)
+    ERROR — and the ``anonymized_telemetry=False`` setting is ignored in this version.
+    Retrieval is unaffected; this only silences the dependency's broken telemetry
+    logger so the demo/console stays clean. The proper long-term fix is pinning a
+    compatible ``posthog`` (needs a dependency change), tracked as a follow-up.
+    """
+    logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 
 @contextmanager

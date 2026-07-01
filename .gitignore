@@ -224,11 +224,7 @@ __marimo__/
 .codex
 data
 .python-version
-AGENTS.md
-CLAUDE.md
-DECISIONS.md
 Intern_Assessment_Directions.pdf
-PLAN.md
-SPEC.md
+policyforge_fixes.patch
 TESTING.md
-deliverables/
+deliverables

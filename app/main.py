@@ -20,6 +20,7 @@ from policyforge.store import RuleStore
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_MANUAL_PATH = ROOT / "data" / "2026_ncci_medicare_policy_manual_all-chapters.pdf"
 PTP_TABLE_DIR = ROOT / "data" / "ccipra-v322r0-f1"
+FIXTURE_PTP_TABLE = ROOT / "fixtures" / "sample_ptp.csv"
 DEFAULT_STORE_PATH = ROOT / "data" / "policyforge_store.db"
 DEFAULT_RULESET_VERSION = "demo"
 DEFAULT_LINE_1_CODE = "11042"
@@ -139,6 +140,27 @@ def _gate_view(store: RuleStore, ruleset_version: str, approver: str) -> None:
     candidate = candidates[selected]
     st.json(candidate.model_dump(mode="json"))
 
+    extracted_ccmi = candidate.modifier_indicator
+    if extracted_ccmi is ModifierIndicator.NOT_APPLICABLE:
+        st.warning(
+            "Extracted CCMI is 9 (not applicable). A rule stored with CCMI 9 is inert — "
+            "the engine skips it and the pair will always pay. If the rationale forbids "
+            "modifier bypass, correct this to 0 before approving."
+        )
+    ccmi_choice = st.selectbox(
+        "Modifier indicator (CCMI) to store",
+        options=[0, 1, 9],
+        index=[0, 1, 9].index(extracted_ccmi.value),
+        format_func=lambda value: {
+            0: "0 - not allowed (hard deny)",
+            1: "1 - allowed (deny; flag with NCCI modifier)",
+            9: "9 - not applicable (inert; engine skips)",
+        }[value],
+    )
+    reviewed_indicator = ModifierIndicator(ccmi_choice)
+    if reviewed_indicator is not extracted_ccmi:
+        st.info(f"Reviewer override: storing CCMI {ccmi_choice} instead of {extracted_ccmi.value}.")
+
     effective_date = st.date_input("Effective date", date(2026, 1, 1))
     deletion_date_enabled = st.checkbox("Deletion date")
     deletion_date = (
@@ -157,6 +179,7 @@ def _gate_view(store: RuleStore, ruleset_version: str, approver: str) -> None:
                 effective_date=effective_date,
                 deletion_date=deletion_date,
                 in_existence_prior_1996=in_existence_prior_1996,
+                modifier_indicator=reviewed_indicator,
             )
             store.add_approved(
                 rule,
@@ -248,14 +271,17 @@ def _dotenv_value(value: str) -> str:
 
 @st.cache_data(show_spinner=False)
 def _policy_sections() -> dict[str, str]:
+    if not POLICY_MANUAL_PATH.exists():
+        return {}
     return load_policy_sections(POLICY_MANUAL_PATH)
 
 
 @st.cache_data(show_spinner=False)
 def _ptp_rules() -> list[PTPRule]:
+    table_source = PTP_TABLE_DIR if PTP_TABLE_DIR.exists() else FIXTURE_PTP_TABLE
     return [
         rule
-        for rule in load_ptp_table(PTP_TABLE_DIR)
+        for rule in load_ptp_table(table_source)
         if rule.column_1 == DEFAULT_LINE_1_CODE and rule.column_2 == DEFAULT_LINE_2_CODE
     ]
 

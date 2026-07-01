@@ -60,6 +60,50 @@ def _candidate(**overrides) -> RuleCandidate:
     return RuleCandidate(**fields)
 
 
+def test_reviewer_corrects_inert_ccmi9_candidate_to_ccmi0_at_the_gate():
+    # Extraction proposed CCMI 9 (not applicable), which compiles to an inert rule
+    # the engine skips. The reviewer corrects it to 0 at the gate; the stored rule
+    # must then actually deny the column-2 line.
+    candidate = _candidate(
+        column_1="11055",
+        column_2="11720",
+        modifier_indicator=ModifierIndicator.NOT_APPLICABLE,
+        source_quote="Modifiers shall not be used to bypass the edit.",
+    )
+
+    uncorrected = review_candidate(
+        candidate, GateDecision.APPROVE, effective_date=date(2020, 1, 1)
+    )
+    assert uncorrected.modifier_indicator is ModifierIndicator.NOT_APPLICABLE
+
+    corrected = review_candidate(
+        candidate,
+        GateDecision.APPROVE,
+        effective_date=date(2020, 1, 1),
+        modifier_indicator=ModifierIndicator.NOT_ALLOWED,
+    )
+    assert corrected.modifier_indicator is ModifierIndicator.NOT_ALLOWED
+
+    claim = Claim(
+        claim_id="c",
+        beneficiary_id="b",
+        provider_id="p",
+        lines=[
+            ClaimLine(line_id="1", code="11055", date_of_service=date(2026, 1, 1)),
+            ClaimLine(line_id="2", code="11720", date_of_service=date(2026, 1, 1)),
+        ],
+    )
+    inert = adjudicate(claim, [uncorrected], RULESET_VERSION)
+    assert all(line.status is DispositionStatus.PAY for line in inert.line_dispositions)
+
+    enforced = {
+        line.line_id: line
+        for line in adjudicate(claim, [corrected], RULESET_VERSION).line_dispositions
+    }
+    assert enforced["2"].status is DispositionStatus.DENY
+    assert enforced["2"].cited_rule_id == "PTP:11055:11720"
+
+
 def _authoritative_rule(**overrides) -> PTPRule:
     fields = {
         "column_1": "11042",

@@ -5,7 +5,7 @@ from __future__ import annotations
 import builtins
 from datetime import date
 
-from policyforge.evaluation import evaluate, score_track_a, score_track_b
+from policyforge.evaluation import evaluate, extractable_gold, score_track_a, score_track_b
 from policyforge.evaluation.run_eval import (
     _claim_cases_from_gold_rows,
     _rules_from_gold_rows,
@@ -462,3 +462,28 @@ def test_different_beneficiary_gold_row_becomes_separate_single_line_claims():
     assert [len(claim.lines) for claim, _ in cases] == [1, 1]
     assert [claim.beneficiary_id for claim, _ in cases] == ["M1", "M2"]
     assert all(list(expected.values()) == [DispositionStatus.PAY] for _, expected in cases)
+
+
+def test_extractable_gold_keeps_only_pairs_present_in_prose():
+    gold = [
+        PTPRule(
+            column_1="11055",
+            column_2="11720",
+            modifier_indicator=ModifierIndicator.NOT_ALLOWED,
+            effective_date=date(2020, 1, 1),
+            rationale="present in prose",
+        ),
+        PTPRule(
+            column_1="63042",
+            column_2="22630",
+            modifier_indicator=ModifierIndicator.NOT_ALLOWED,
+            effective_date=date(2020, 1, 1),
+            rationale="absent from prose",
+        ),
+    ]
+    # 11055/11720 appear (with a hard line break); 63042/22630 do not.
+    corpus_text = "The edit pairs Column One 11055\nwith Column Two 11720 on the same phalanx."
+
+    extractable = extractable_gold(gold, corpus_text)
+
+    assert [rule.rule_id for rule in extractable] == ["PTP:11055:11720"]
